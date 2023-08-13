@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
 const ws = require('ws');
 const fs = require('fs');
+const {S3Client}=require('@aws-sdk/client-s3');
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -26,7 +27,6 @@ const bcryptSalt = bcrypt.genSaltSync(10);
 
 // Initialize Express app
 const app = express();
-
 
 
 // Configure CORS options
@@ -160,7 +160,7 @@ app.post('/register', async (req, res) => {
 });
 
 // Start Express server
-const server = app.listen('https://chat-app-mauve-three.vercel.app/ ');
+const server = app.listen(4040);
 
 // Initialize WebSocket server
 const wss = new ws.WebSocketServer({ server });
