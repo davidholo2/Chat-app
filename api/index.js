@@ -27,6 +27,8 @@ const bcryptSalt = bcrypt.genSaltSync(10);
 // Initialize Express app
 const app = express();
 
+
+
 // Configure CORS options
 const corsOptions = {
     origin: 'http://localhost:5173', // Replace with your frontend URL
