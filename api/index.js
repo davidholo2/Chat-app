@@ -1,4 +1,3 @@
-// Import required modules
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
@@ -6,13 +5,13 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
+const User = require('./models/User');
+const Message = require('./models/Message');
 const ws = require('ws');
-const fs = require('fs');
-const {S3Client}=require('@aws-sdk/client-s3');
+const fs=require('fs');
 
-dotenv.config(); // Load environment variables from .env file
+dotenv.config();
 
-// Connect to MongoDB using mongoose
 mongoose.connect(process.env.MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => {
         console.log('Connected to MongoDB');
@@ -21,35 +20,26 @@ mongoose.connect(process.env.MONGO_URL, { useNewUrlParser: true, useUnifiedTopol
         console.error('Error connecting to MongoDB:', err);
     });
 
-// Load JWT secret and bcrypt salt
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
-// Initialize Express app
 const app = express();
 
-
-// Configure CORS options
 const corsOptions = {
-    origin: 'http://localhost:5173', // Replace with your frontend URL
+    origin: 'http://localhost:5173',
     credentials: true,
 };
-app.use('/uploads', express.static(__dirname + '/uploads'));
-app.use(cors(corsOptions)); // Enable CORS
-app.use(express.json()); // Parse JSON requests
-app.use(cookieParser()); // Parse cookies
+app.use('/uploads',express.static(__dirname+'/uploads'));
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use(cookieParser());
 
-// Load User and Message models (assuming you have defined these models)
-const User = require('./models/User');
-const Message = require('./models/Message');
-
-// Utility function to get user data from JWT token in request
 async function getUserDataFromRequest(req) {
     return new Promise((resolve, reject) => {
         const token = req.cookies?.token;
         if (token) {
             jwt.verify(token, jwtSecret, {}, (err, userData) => {
-                if (err) reject(err);
+                if (err) throw err;
                 resolve(userData);
             });
         } else {
@@ -58,46 +48,38 @@ async function getUserDataFromRequest(req) {
     });
 }
 
-// Handle fetching messages for a specific user
 app.get('/messages/:userId', async (req, res) => {
     const { userId } = req.params;
-    try {
-        const messages = await Message.find({
-            $or: [
-                { sender: userId, recipient: req.userId },
-                { sender: req.userId, recipient: userId },
-            ]
-        }).sort({ createdAt: 1 });
-        res.json(messages);
-    } catch (err) {
-        console.error('Fetching messages error:', err);
-        res.status(500).json('error');
-    }
-});a
-
-// Handle fetching list of users
-app.get('/people', async (req, res) => {
-    try {
-        const users = await User.find({}, { _id: 1, username: 1 });
-        res.json(users);
-    } catch (err) {
-        console.error('Fetching users error:', err);
-        res.status(500).json('error');
-    }
+    const userData = await getUserDataFromRequest(req);
+    const ourUserId = userData.userId;
+    const messages = await Message.find({
+        sender: { $in: [userId, ourUserId] },
+        recipient: { $in: [userId, ourUserId] },
+    }).sort({ createdAt: 1 });
+    res.json(messages);
 });
 
-// Handle fetching user profile data
-app.get('/profile', async (req, res) => {
-    try {
-        const userData = await getUserDataFromRequest(req);
-        res.json(userData);
-    } catch (err) {
-        console.error('Fetching profile error:', err);
+app.get('/people',async(req,res)=>{
+  const users=await User.find({},{'_id':1,username:1});
+  res.json(users);
+});
+
+app.get('/profile', (req, res) => {
+    const { token } = req.cookies;
+    if (token) {
+        jwt.verify(token, jwtSecret, {}, (err, userData) => {
+            if (err) {
+                console.error('JWT verification error:', err);
+                res.status(401).json('invalid token');
+            } else {
+                res.json(userData);
+            }
+        });
+    } else {
         res.status(401).json('no token');
     }
 });
 
-// Handle user login
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -128,12 +110,10 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Handle user logout
-app.post('/logout', (req, res) => {
-    res.cookie('token', '', { sameSite: 'none', secure: true }).json('ok');
+app.post('/logout',(req,res)=>{
+    res.cookie('token','',{sameSite:'none',secure:true}).json('ok');
 });
 
-// Handle user registration
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -159,87 +139,33 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// Start Express server
 const server = app.listen(4040);
 
-// Initialize WebSocket server
 const wss = new ws.WebSocketServer({ server });
 wss.on('connection', (connection, req) => {
-    console.log('WebSocket connected');
 
-    // Initialize connection properties
-    connection.isAlive = true;
-    connection.timer = setInterval(() => {
-        connection.ping();
-        connection.deathTimer = setTimeout(() => {
-            connection.isAlive = false;
-            clearInterval(connection.timer);
-            connection.terminate();
-            // Notify other clients about online status change
-            notifyAboutOnlinePeople();
-        }, 1000);
-    }, 5000);
-
-    // Handle WebSocket 'pong' event
-    connection.on('pong', () => {
-        clearTimeout(connection.deathTimer);
-    });
-
-    // Handle WebSocket 'message' event
-    connection.on('message', async (message) => {
-        const messageData = JSON.parse(message.toString());
-        const { recipient, text, file } = messageData;
-        let filename = null;
-        if (file) {
-            console.log('size', file.data.length);
-            const parts = file.name.split('.');
-            const ext = parts[parts.length - 1];
-            filename = Date.now() + '.'+ext;
-            const path = __dirname + '/uploads/' + filename;
-            const bufferData = new Buffer(file.data.split(',')[1], 'base64');
-            fs.writeFile(path, bufferData, () => {
-              console.log('file saved:'+path);
-            });
-        }
-        if (recipient && (text || file)) {
-            const messageDoc = await Message.create({
-                sender: connection.userId,
-                recipient,
-                text,
-                file: file ? filename : null,
-            });
-            // Notify recipient clients about the new message
-            [...wss.clients].filter(c => c.userId === recipient).forEach(c => {
-                c.send(JSON.stringify({
-                    text,
-                    sender: connection.userId,
-                    recipient,
-                    file: file ? filename : null,
-                    _id: messageDoc._id,
-                }));
-            });
-        }
-    });
-
-    // Notify all clients about online people
-    function notifyAboutOnlinePeople() {
-        const onlineUsers = [...wss.clients].map(c => ({ userId: c.userId, username: c.username }));
+    function notifyAboutOnlinePeople(){
         [...wss.clients].forEach(client => {
             client.send(JSON.stringify({
-                online: onlineUsers,
+                online: [...wss.clients].map(c => ({ userId: c.userId, username: c.username })),
             }));
         });
     }
+    connection.isAlive=true;
+    connection.timer=setInterval(()=>{
+        connection.ping();
+        connection.deathTimer=setTimeout(() => {
+            connection.isAlive=false;
+            clearInterval(connection.timer);
+            connection.terminate();
+            notifyAboutOnlinePeople();
+        }, 1000);
+    },5000);
 
-    // Handle WebSocket connection close event
-    connection.on('close', () => {
-        console.log('WebSocket disconnected');
-        clearInterval(connection.timer);
-        // Notify other clients about online status change
-        notifyAboutOnlinePeople();
+    connection.on('pong',()=>{
+        clearTimeout(connection.deathTimer);
     });
 
-    // Extract user data from WebSocket handshake
     const cookies = req.headers.cookie;
     if (cookies) {
         const tokenCookieString = cookies.split(';').find(str => str.trim().startsWith('token='));
@@ -251,10 +177,44 @@ wss.on('connection', (connection, req) => {
                     const { userId, username } = userData;
                     connection.userId = userId;
                     connection.username = username;
-                    // Notify all clients about online status change
+
+                    const clientsData = [...wss.clients].map(c => ({ userId: c.userId, username: c.username }));
                     notifyAboutOnlinePeople();
                 });
             }
         }
-     }
+    }
+    connection.on('message', async (message) => {
+        const messageData = JSON.parse(message.toString());
+        const { recipient, text,file} = messageData;
+        let filename=null;
+        if(file){
+            
+            const parts=file.name.split('.');
+            const ext=parts[parts.length-1];
+            filename=Date.now()+'.'+ext;
+            const path=__dirname+'/Uploads/'+filename;
+            const bufferData=new Buffer.from(file.data.split(',')[1],'base64');
+            fs.writeFile(path,bufferData,()=>{
+                console.log('file save'+path)
+            });
+
+        }
+        if (recipient && (text||file)) {
+            const messageDoc = await Message.create({
+                sender: connection.userId,
+                recipient,
+                text,
+                file:file?filename:null,
+            });
+            console.log("created msg");            
+            [...wss.clients].filter(c => c.userId === recipient).forEach(c => c.send(JSON.stringify({
+                text,
+                sender: connection.userId,
+                recipient,
+                file:file?filename:null,
+                _id: messageDoc._id,
+            })) );
+        }
+    });
 });
