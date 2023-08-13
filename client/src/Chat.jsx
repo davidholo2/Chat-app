@@ -22,7 +22,7 @@ export default function Chat() {
 
   // Establish WebSocket connection
   function connectToWs() {
-    const ws = new WebSocket('ws://localhost:4040');
+    const ws = new WebSocket('ws://chat-app-mauve-three.vercel.app/');
     setWs(ws);
     ws.addEventListener('message', handleMessage);
     ws.addEventListener('close', () => {
