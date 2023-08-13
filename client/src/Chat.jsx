@@ -30,7 +30,7 @@ export default function Chat() {
         console.log('Disconnected. Trying to reconnect.');
         connectToWs();
       }, 1000);
-    });
+    }) ;
   }
   
 
