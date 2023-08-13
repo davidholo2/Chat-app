@@ -26,7 +26,7 @@ const bcryptSalt = bcrypt.genSaltSync(10);
 const app = express();
 
 const corsOptions = {
-    origin: 'http://localhost:5173',
+    origin: 'https://chat-app-mauve-three.vercel.app/',
     credentials: true,
 };
 app.use('/uploads',express.static(__dirname+'/uploads'));
