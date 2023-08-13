@@ -160,7 +160,7 @@ app.post('/register', async (req, res) => {
 });
 
 // Start Express server
-const server = app.listen(4040);
+const server = app.listen('https://chat-app-mauve-three.vercel.app/ ');
 
 // Initialize WebSocket server
 const wss = new ws.WebSocketServer({ server });
@@ -191,8 +191,15 @@ wss.on('connection', (connection, req) => {
         const { recipient, text, file } = messageData;
         let filename = null;
         if (file) {
-            // Handle file uploading and saving here
-            // ...
+            console.log('size', file.data.length);
+            const parts = file.name.split('.');
+            const ext = parts[parts.length - 1];
+            filename = Date.now() + '.'+ext;
+            const path = __dirname + '/uploads/' + filename;
+            const bufferData = new Buffer(file.data.split(',')[1], 'base64');
+            fs.writeFile(path, bufferData, () => {
+              console.log('file saved:'+path);
+            });
         }
         if (recipient && (text || file)) {
             const messageDoc = await Message.create({
