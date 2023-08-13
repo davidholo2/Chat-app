@@ -73,7 +73,7 @@ app.get('/messages/:userId', async (req, res) => {
         console.error('Fetching messages error:', err);
         res.status(500).json('error');
     }
-});
+});a
 
 // Handle fetching list of users
 app.get('/people', async (req, res) => {
