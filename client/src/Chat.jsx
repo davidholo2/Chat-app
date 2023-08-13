@@ -22,7 +22,7 @@ export default function Chat() {
 
   // Establish WebSocket connection
   function connectToWs() {
-    const ws = new WebSocket('ws://chat-app-mauve-three.vercel.app/');
+    const ws = new WebSocket(`wss://${window.location.host}`);
     setWs(ws);
     ws.addEventListener('message', handleMessage);
     ws.addEventListener('close', () => {
@@ -32,6 +32,7 @@ export default function Chat() {
       }, 1000);
     });
   }
+  
 
   // Update online people list
   function showOnlinePeople(peopleArray) {
